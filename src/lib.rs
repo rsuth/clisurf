@@ -1,7 +1,26 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use std::io;
+use thiserror::Error;
 use ureq;
+
+#[derive(Error, Debug)]
+pub enum SwellDataError {
+    #[error("Station not found")]
+    NotFound,
+    #[error("Network error: {0}")]
+    NetworkError(#[from] ureq::Error),
+    #[error("Error parsing data: {0}")]
+    ParseError(#[from] Box<dyn std::error::Error>),
+    #[error("Error parsing date: {0}")]
+    DateError(#[from] chrono::ParseError),
+    #[error("I/O error: {0}")]
+    IoError(#[from] io::Error),
+    #[error("JSON parsing error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    #[error("Unknown error: {0}")]
+    Unknown(String),
+}
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SwellData {
@@ -14,7 +33,7 @@ pub struct SwellData {
 }
 
 impl SwellData {
-    fn new(
+    pub fn new(
         station_id: String,
         date_time: NaiveDateTime,
         wave_height: f32,
@@ -32,7 +51,7 @@ impl SwellData {
         }
     }
 
-    fn from_json(json: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn from_json(json: &str) -> Result<Self, SwellDataError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct RawSwellData {
@@ -65,8 +84,12 @@ impl SwellData {
     }
 }
 
-pub fn get_swell_data(url: &str) -> Result<SwellData, Box<dyn Error>> {
-    let response = ureq::get(url).call()?.into_string()?;
-    let swell_data = SwellData::from_json(&response)?;
+pub fn get_swell_data(url: &str) -> Result<SwellData, SwellDataError> {
+    let response = ureq::get(url).call().map_err(|e| match e {
+        ureq::Error::Status(404, _) => SwellDataError::NotFound,
+        _ => SwellDataError::NetworkError(e),
+    })?;
+    let response_str = response.into_string()?;
+    let swell_data = SwellData::from_json(&response_str)?;
     Ok(swell_data)
 }

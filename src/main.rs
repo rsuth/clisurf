@@ -47,7 +47,11 @@ fn main() {
             let output = format_output(&args, &data);
             println!("{}", output);
         }
-        Err(e) => eprintln!("Error: {}", e),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            // exit with a non-zero status code
+            std::process::exit(1);
+        }
     }
 }
 
